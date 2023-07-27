@@ -4,6 +4,8 @@
 #include <ctime> // for getting current time
 #include <algorithm> // for find function
 #include <sqlite3.h> 
+#include <cstdlib> // for system() function
+
 
 // Class definitions
 class Tour {
@@ -28,6 +30,8 @@ public:
     TourGuide(std::string name, std::string email, std::string password)
         : name(name), email(email), password(password) {}
 };
+
+
 
 // Global variables
 bool isAdminLoggedIn = false;
@@ -72,7 +76,7 @@ void initializeAvailability() {
 sqlite3* db = nullptr;
 
 int openDatabase() {
-    int rc = sqlite3_open("your_database_name.db", &db);
+    int rc = sqlite3_open("test.db", &db);
     if (rc) {
         std::cerr << "Error opening database: " << sqlite3_errmsg(db) << std::endl;
         sqlite3_close(db);
@@ -100,6 +104,25 @@ void createTourGuideTable() {
     }
 }
 
+// Function to create the "messages" table
+
+void createMessagesTable() {
+    const char* sql = "CREATE TABLE IF NOT EXISTS messages ("
+                      "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                      "name TEXT NOT NULL,"
+                      "time TEXT NOT NULL,"
+                      "message TEXT NOT NULL"
+                      ");";
+
+    char* errMsg;
+    int rc = sqlite3_exec(db, sql, nullptr, 0, &errMsg);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
+    }
+}
+
+
 // Function to display availability table
 void displayAvailability() {
     std::cout << "\nEdit Availability\n";
@@ -121,10 +144,10 @@ void displayAvailability() {
     // Display time slots with 'X' for selected slots
     const char selectedMarker = 'X';
     for (int hour = 0; hour < NUM_HOURS; ++hour) {
-        std::cout << "\n| " << std::setw(5) << 8 + hour << ":00 |";
+        std::cout << "\n| " << std::setw(1) << 8 + hour << ":00 |";
         for (int day = 0; day < NUM_DAYS; ++day) {
             if (availability[hour][day]) {
-                std::cout << std::setw(8) << selectedMarker << "|";
+                std::cout << std::setw(5) << selectedMarker << "|";
             } else {
                 std::cout << "        |";
             }
@@ -136,6 +159,34 @@ void displayAvailability() {
     }
 
     std::cout << "\n\n";
+}
+
+int getHourIndex(const std::string& hourStr) {
+    // Convert the input string to lowercase for case-insensitivity
+    std::string lowercaseStr = hourStr;
+    std::transform(lowercaseStr.begin(), lowercaseStr.end(), lowercaseStr.begin(), ::tolower);
+
+    // Create a map of hour strings to their corresponding index
+    std::unordered_map<std::string, int> hourMap;
+    hourMap["8 am"] = 0;
+    hourMap["9 am"] = 1;
+    hourMap["10 am"] = 2;
+    hourMap["11 am"] = 3;
+    hourMap["12 pm"] = 4;
+    hourMap["1 pm"] = 5;
+    hourMap["2 pm"] = 6;
+    hourMap["3 pm"] = 7;
+    hourMap["4 pm"] = 8;
+    hourMap["5 pm"] = 9;
+    hourMap["6 pm"] = 10;
+
+    // Lookup the input string in the map
+    auto it = hourMap.find(lowercaseStr);
+    if (it != hourMap.end()) {
+        return it->second;
+    } else {
+        return -1; // Invalid input
+    }
 }
 
 void editAvailability() {
@@ -151,23 +202,23 @@ void editAvailability() {
             return;
         }
 
-        std::cout << "Choose starting hour (0 - 10): ";
-        std::cin >> startHour;
-        if (startHour < 0 || startHour > 10) {
-            std::cout << "Invalid starting hour. Please try again.\n";
+        std::string startHourStr, endHourStr;
+        std::cout << "Choose starting hour (from 8 AM to 6 PM): ";
+        std::cin.ignore();
+        std::getline(std::cin, startHourStr);
+
+        startHour = getHourIndex(startHourStr);
+        if (startHour == -1) {
+            std::cout << "Invalid starting hour. Please choose from 8 AM to 6 PM.\n";
             return;
         }
 
-        std::cout << "Choose ending hour (0 - 10): ";
-        std::cin >> endHour;
-        if (endHour < 0 || endHour > 10) {
-            std::cout << "Invalid ending hour. Please try again.\n";
-            return;
-        }
+        std::cout << "Choose ending hour (from 8 AM to 6 PM): ";
+        std::getline(std::cin, endHourStr);
 
-        // Validate startHour and endHour range
-        if (startHour > endHour) {
-            std::cout << "Starting hour cannot be greater than ending hour. Please try again.\n";
+        endHour = getHourIndex(endHourStr);
+        if (endHour == -1 || endHour < startHour) {
+            std::cout << "Invalid ending hour. Please choose from 8 AM to 6 PM and ensure it's after the starting hour.\n";
             return;
         }
 
@@ -198,6 +249,7 @@ void editAvailability() {
     }
 }
 
+
 void addTour() {
     std::string type, description, date, time;
     int length;
@@ -225,8 +277,8 @@ void viewTours() {
 
     int index = 0;
     for (const auto& tour : tours) {
-        std::cout << "| " << std::left << std::setw(6) << tour.type << "| " << std::left << std::setw(30) << tour.description
-                  << "| " << std::left << std::setw(10) << tour.date << "| " << std::left << std::setw(8) << tour.time
+        std::cout << "| " << std::left << std::setw(5) << tour.type << "| " << std::left << std::setw(31) << tour.description
+                  << "| " << std::left << std::setw(11) << tour.date << "| " << std::left << std::setw(9) << tour.time
                   << "| " << std::left << std::setw(6) << tour.length << "|\n";
         index++;
     }
@@ -312,7 +364,7 @@ void viewTourGuides() {
         std::string email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         std::string password = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         tourGuides.push_back(TourGuide(name, email, password));
-        std::cout << "| " << std::left << std::setw(20) << name << "| " << std::left << std::setw(20) << email << std::setw(20) << password << "|\n";
+        std::cout << "| " << std::left << std::setw(21) << name << "| " << std::left << std::setw(20) << email << "| " << std::setw(20) << password << "|\n";
     }
 
     if (rc != SQLITE_DONE) {
@@ -341,7 +393,7 @@ void viewOtherTourGuides() {
         std::string email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         std::string password = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         tourGuides.push_back(TourGuide(name, email, password));
-        std::cout << "| " << std::left << std::setw(20) << name << "| " << std::left << std::setw(20) << email << "|\n";
+        std::cout << "| " << std::left << std::setw(21) << name << "| " << std::left << std::setw(20) << email << "|\n";
     }
 
     if (rc != SQLITE_DONE) {
@@ -356,25 +408,62 @@ void viewProfile() {
     if (loggedInTourGuideIndex != -1) {
         const TourGuide& loggedInTourGuide = tourGuides[loggedInTourGuideIndex];
         std::cout << "\nTour Guide Profile\n";
+        std::cout << "+-----------------------------------+\n";
         std::cout << "Welcome, " << loggedInTourGuide.name << "!\n";
         std::time_t now = std::time(0);
         std::cout << "Current Time: " << std::asctime(std::localtime(&now)) << "\n";
         std::cout << "Contact Info: " << loggedInTourGuide.email << "\n\n";
+        std::cout << "+-----------------------------------+\n";
     }
 }
 
 void viewTourScripts() {
     if (loggedInTourGuideIndex != -1) {
-        const TourGuide& loggedInTourGuide = tourGuides[loggedInTourGuideIndex];
-        std::cout << "\nTour Scripts for " << loggedInTourGuide.name << "\n";
-        std::cout << "No tour scripts available.\n\n";
+        const std::string pdfFilePath = "Lazi.pdf";
+        #ifdef _WIN32
+        // Windows
+        const std::string command = "start " + pdfFilePath;
+#elif __linux__
+        // Linux
+        const std::string command = "xdg-open " + pdfFilePath;
+#elif __APPLE__
+        // macOS
+        const std::string command = "open " + pdfFilePath;
+#else
+        std::cerr << "Opening PDF files is not supported on this platform.\n";
+        return;
+#endif
+
+        // Execute the command
+        int result = system(command.c_str());
+        if (result == -1) {
+            std::cerr << "Error opening the PDF file.\n";
+        }
     }
 }
 
 void viewTourRoutes() {
     if (loggedInTourGuideIndex != -1) {
-        std::cout << "\nView Tour Routes\n";
-        std::cout << "Please open the tour route PDF.\n\n";
+        const std::string pdfFilePath = "route.png";
+        #ifdef _WIN32
+        // Windows
+        const std::string command = "start " + pdfFilePath;
+#elif __linux__
+        // Linux
+        const std::string command = "xdg-open " + pdfFilePath;
+#elif __APPLE__
+        // macOS
+        const std::string command = "open " + pdfFilePath;
+#else
+        std::cerr << "Opening PDF files is not supported on this platform.\n";
+        return;
+#endif
+
+        // Execute the command
+        int result = system(command.c_str());
+        if (result == -1) {
+            std::cerr << "Error opening the PDF file.\n";
+        }
     }
 }
 
@@ -449,20 +538,25 @@ void closeApplication() {
     closeDatabase();
     std::exit(0);
 }
-
 void displayMainMenu() {
-    std::cout << "\nMain Menu\n";
-    std::cout << "1. Admin Login\n";
-    std::cout << "2. Tour Guide Login\n";
-    std::cout << "3. Close Application\n";
-    std::cout << "Enter your choice (1-3): ";
+    std::cout << "\n************ MAIN MENU ************\n";
+    std::cout << "+----------------------------------+\n";
+    std::cout << "|       [1] Admin Login            |\n";
+    std::cout << "|       [2] Tour Guide Login       |\n";
+    std::cout << "|       [3] Close Application      |\n";
+    std::cout << "+----------------------------------+\n";
+    std::cout << "| Enter your choice (1-3):         |\n";
+    std::cout << "+----------------------------------+\n";
 }
 
 void adminLogin() {
     std::string adminPassword;
-    std::cout << "Enter the admin password: ";
+    std::cout << "\n********* ADMIN LOGIN CREDENTIALS *********\n";
+    std::cout << "+--------------------------------------------+\n";
+    std::cout << "|Enter the admin password:";
     std::cin.ignore();
     std::getline(std::cin, adminPassword);
+    std::cout << "+--------------------------------------------+\n";
 
     // Replace "your_admin_password" with the actual admin password
     if (adminPassword == "password") {
@@ -475,16 +569,19 @@ void adminLogin() {
 }
 
 int tourGuideLogin() {
-    std::string name, email;
-
+    std::string name, email, password;
+    std::cout << "\n******* TOUR GUIDE LOGIN CREDENTIALS *******\n";
+    std::cout << "+--------------------------------------------+\n";
     std::cout << "Enter Tour Guide Name: ";
     std::cin.ignore();
     std::getline(std::cin, name);
-
-    std::cout << "Enter Contact Info: ";
+    std::cout << "Enter email: ";
     std::getline(std::cin, email);
+    std::cout << "Enter Password: ";
+    std::getline(std::cin, password);
+    std::cout << "+--------------------------------------------+\n";
 
-    const char* sql = "SELECT id, name, email FROM tour_guides WHERE name = ? AND email = ?;";
+    const char* sql = "SELECT id, name, email, password FROM tour_guides WHERE name = ? AND email = ? AND password = ?;";
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
@@ -494,6 +591,8 @@ int tourGuideLogin() {
 
     sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, email.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, password.c_str(), -1, SQLITE_STATIC);
+
 
     int tourGuideIndex = -1;
     rc = sqlite3_step(stmt);
@@ -507,9 +606,12 @@ int tourGuideLogin() {
     return tourGuideIndex;
 }
 
-#include <iostream>
-
 void displayAdminMenu() {
+    std::cout << "\n";
+    std::cout << "\n";
+    std::cout << " Welcome, to the admin dashboard !\n";
+    std::time_t now = std::time(0);
+    std::cout << " It is " << std::asctime(std::localtime(&now));
     std::cout << "\n*********** Admin Menu *************\n";
     std::cout << "+------------------------------------+\n";
     std::cout << "|       [1] Add Tour                 |\n";
@@ -517,7 +619,8 @@ void displayAdminMenu() {
     std::cout << "|       [3] Add Tour Guide           |\n";
     std::cout << "|       [4] View Tour Guides         |\n";
     std::cout << "|       [5] Delete Tour Guide        |\n";
-    std::cout << "|       [6] Log out                  |\n";
+    std::cout << "|       [6] View Latest Messages    |\n";
+    std::cout << "|       [7] Log out                  |\n";
     std::cout << "+------------------------------------+\n";
     std::cout << "| Enter your choice (1-6):           |\n";
     std::cout << "+------------------------------------+\n";
@@ -526,6 +629,12 @@ void displayAdminMenu() {
 
 
 void displayTourGuideMenu() {
+
+    std::cout << "\n";
+    std::cout << "\n";
+    std::cout << " Welcome, to the Tour Guide dashboard !\n";
+    std::time_t now = std::time(0);
+    std::cout << " It is " << std::asctime(std::localtime(&now));
     std::cout << "\n********* Tour Guide Menu **********\n";
     std::cout << "+------------------------------------+\n";
     std::cout << "|       [1] View Profile             |\n";
@@ -535,17 +644,78 @@ void displayTourGuideMenu() {
     std::cout << "|       [5] View Other Tour Guides   |\n";
     std::cout << "|       [6] Register for Tour        |\n";
     std::cout << "|       [7] View Registered Tours    |\n";
-    std::cout << "|       [8] Logout                   |\n";
+    std::cout << "|       [8] Send message to admin    |\n";
+    std::cout << "|       [9] Logout                   |\n";
     std::cout << "+------------------------------------+\n";
     std::cout << "| Enter your choice (1-8):           |\n";
     std::cout << "+------------------------------------+\n";
 
 }
 
+
+void sendRequestWithName(const std::string& name, const std::string& message) {
+    if (loggedInTourGuideIndex != -1) {
+        std::string sql = "INSERT INTO messages (name, message) VALUES ('" + name + "', '" + message + "');";
+        char* errMsg;
+        int rc = sqlite3_exec(db, sql.c_str(), nullptr, 0, &errMsg);
+        if (rc != SQLITE_OK) {
+            std::cerr << "SQL error: " << errMsg << std::endl;
+            sqlite3_free(errMsg);
+            return;
+        }
+
+        std::cout << "Request sent successfully!\n";
+    }
+}
+
+
+
+
+
+void viewLatestMessages() {
+    std::cout << "\nLatest Messages\n";
+    std::cout << "+----------------------+---------------------------+---------------------------------------------------+\n";
+    std::cout << "| Name                 | Time                      | Message                                           |\n";
+    std::cout << "+----------------------+---------------------------+---------------------------------------------------+\n";
+
+    const char* sql = "SELECT * FROM messages ORDER BY time DESC LIMIT 10;";
+    sqlite3_stmt* stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        std::cerr << "SQL error: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        std::string name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        std::string time = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        std::string message = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        std::cout << "| " << std::left << std::setw(20) << name << "| " << std::left << std::setw(25) << time << "| " << std::setw(49) << message << "|\n";
+    }
+
+    if (rc != SQLITE_DONE) {
+        std::cerr << "SQL error: " << sqlite3_errmsg(db) << std::endl;
+    }
+
+    sqlite3_finalize(stmt);
+    std::cout << "+----------------------+---------------------------+---------------------------------------------------+\n";
+}
+
+
 int main() {
     int choice;
     openDatabase();
     createTourGuideTable();
+    createMessagesTable();
+
+    std::cout << "8888888                    d8b      888                      d8888      888               d8b                   d8b                            \n";
+    std::cout << "  888                      Y8P      888                     d88888      888               Y8P                   Y8P                            \n";
+    std::cout << "  888                               888                    d88P888      888                                                                    \n";
+    std::cout << "  888   88888b.  .d8888b   888  .d88888  .d88b.           d88P 888  .d88888 88888b.d88b.  888 .d8888b  .d8888b  888  .d88b.  88888b.  .d8888b   \n";
+    std::cout << "  888   888  88b 88K       888 d88  888 d8P  Y8b         d88P  888 d88  888 888  888  88b 888 88K      88K      888 d88  88b 888  88b 88K         \n";
+    std::cout << "  888   888  888 Y8888b.   888 888  888 88888888        d88P   888 888  888 888  888  888 888  Y8888b. Y8888b.  888 888  888 888  888 Y8888b.    \n";
+    std::cout << "  888   888  888      X88  888 Y88b 888 Y8b.           d8888888888 Y88b 888 888  888  888 888      X88      X88 888 Y88..88P 888  888      X88   \n";
+    std::cout << "8888888 888  888  88888P'  888  Y88888   Y8888        d88P     888 Y8888888 888  888  888 888 888888P' 888Y88P  888   888    888  88P 888Y88P\n";
     std::cout <<" ";
     while (true) {
         displayMainMenu();
@@ -599,7 +769,11 @@ int main() {
                     deleteTourGuide();
                     break;
 
-                case 6: // Back to Main Menu
+                case 6:
+                    viewLatestMessages();
+                    break;
+
+                case 7: // Back to Main Menu
                     isAdminLoggedIn = false;
                     break;
 
@@ -643,7 +817,17 @@ int main() {
                     viewRegisteredTours();
                     break;
 
-                case 8: // Back to Main Menu
+                case 8:
+                        {
+                    std::string message;
+                    std::cout << "Enter your message: ";
+                    std::cin.ignore();
+                    std::getline(std::cin, message);
+                    sendRequestWithName(tourGuides[loggedInTourGuideIndex].name, message);
+                    break;
+                         }
+
+                case 9: // Back to Main Menu
                     loggedInTourGuideIndex = -1;
                     break;
 
@@ -653,6 +837,7 @@ int main() {
             }
 
             displayTourGuideMenu();
+
         }
     }
 
